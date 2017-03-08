@@ -8,35 +8,6 @@ import (
 	"strings"
 )
 
-// Frame represents a program counter inside a stack frame.
-type Frame uintptr
-
-// pc returns the program counter for this frame;
-// multiple frames may have the same PC value.
-func (f Frame) pc() uintptr { return uintptr(f) - 1 }
-
-// file returns the full path to the file that contains the
-// function for this Frame's pc.
-func (f Frame) file() string {
-	fn := runtime.FuncForPC(f.pc())
-	if fn == nil {
-		return "unknown"
-	}
-	file, _ := fn.FileLine(f.pc())
-	return file
-}
-
-// line returns the line number of source code of the
-// function for this Frame's pc.
-func (f Frame) line() int {
-	fn := runtime.FuncForPC(f.pc())
-	if fn == nil {
-		return 0
-	}
-	_, line := fn.FileLine(f.pc())
-	return line
-}
-
 // Format formats the frame according to the fmt.Formatter interface.
 //
 //    %s    source file
@@ -51,23 +22,20 @@ func (f Frame) line() int {
 func (f Frame) Format(s fmt.State, verb rune) {
 	switch verb {
 	case 's':
+		if f.runtimeFunc() == nil {
+			io.WriteString(s, "unknown")
+			return
+		}
 		switch {
 		case s.Flag('+'):
-			pc := f.pc()
-			fn := runtime.FuncForPC(pc)
-			if fn == nil {
-				io.WriteString(s, "unknown")
-			} else {
-				file, _ := fn.FileLine(pc)
-				fmt.Fprintf(s, "%s\n\t%s", fn.Name(), file)
-			}
+			fmt.Fprintf(s, "%s\n\t%s", f.function(), f.file())
 		default:
 			io.WriteString(s, path.Base(f.file()))
 		}
 	case 'd':
 		fmt.Fprintf(s, "%d", f.line())
 	case 'n':
-		name := runtime.FuncForPC(f.pc()).Name()
+		name := f.function()
 		io.WriteString(s, funcname(name))
 	case 'v':
 		f.Format(s, 's')
@@ -109,24 +77,17 @@ func (st StackTrace) Format(s fmt.State, verb rune) {
 type stack []uintptr
 
 func (s *stack) Format(st fmt.State, verb rune) {
+	frames := s.StackTrace()
+
 	switch verb {
 	case 'v':
 		switch {
 		case st.Flag('+'):
-			for _, pc := range *s {
-				f := Frame(pc)
+			for _, f := range frames {
 				fmt.Fprintf(st, "\n%+v", f)
 			}
 		}
 	}
-}
-
-func (s *stack) StackTrace() StackTrace {
-	f := make([]Frame, len(*s))
-	for i := 0; i < len(f); i++ {
-		f[i] = Frame((*s)[i])
-	}
-	return f
 }
 
 func callers() *stack {
