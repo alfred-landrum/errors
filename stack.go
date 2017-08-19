@@ -8,11 +8,6 @@ import (
 	"strings"
 )
 
-// Frame holds call frame information from a stack trace.
-type Frame struct {
-	rf runtime.Frame
-}
-
 // Format formats the frame according to the fmt.Formatter interface.
 //
 //    %s    source file
@@ -27,21 +22,20 @@ type Frame struct {
 func (f Frame) Format(s fmt.State, verb rune) {
 	switch verb {
 	case 's':
-		if f.rf.Func == nil {
+		if f.runtimeFunc() == nil {
 			io.WriteString(s, "unknown")
 			return
 		}
 		switch {
 		case s.Flag('+'):
-			name := f.rf.Function
-			fmt.Fprintf(s, "%s\n\t%s", name, f.rf.File)
+			fmt.Fprintf(s, "%s\n\t%s", f.function(), f.file())
 		default:
-			io.WriteString(s, path.Base(f.rf.File))
+			io.WriteString(s, path.Base(f.file()))
 		}
 	case 'd':
-		fmt.Fprintf(s, "%d", f.rf.Line)
+		fmt.Fprintf(s, "%d", f.line())
 	case 'n':
-		name := f.rf.Function
+		name := f.function()
 		io.WriteString(s, funcname(name))
 	case 'v':
 		f.Format(s, 's')
@@ -86,21 +80,6 @@ func (s *stack) Format(st fmt.State, verb rune) {
 			}
 		}
 	}
-}
-
-func (s *stack) StackTrace() StackTrace {
-	cframes := runtime.CallersFrames(*s)
-
-	frames := make([]Frame, 0, len(*s))
-	for {
-		f, more := cframes.Next()
-		frames = append(frames, Frame{f})
-		if !more {
-			break
-		}
-	}
-
-	return frames
 }
 
 func callers() *stack {
